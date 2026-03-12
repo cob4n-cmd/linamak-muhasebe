@@ -1,0 +1,10 @@
+node_modules/
+client/dist/
+server/firma.db
+server/firma.db-shm
+server/firma.db-wal
+server/firma.db-journal
+.env
+.DS_Store
+*.log
+.claude/

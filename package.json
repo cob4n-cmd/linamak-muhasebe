@@ -1,0 +1,16 @@
+{
+  "name": "linamak-muhasebe",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npx nodemon index.js",
+    "dev:client": "cd client && npx vite",
+    "build": "cd client && npm install && npm run build",
+    "start": "cd server && node index.js",
+    "postinstall": "cd server && npm install && cd ../client && npm install && npm run build"
+  }
+}

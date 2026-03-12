@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: linamak-muhasebe
+    runtime: node
+    plan: free
+    buildCommand: cd server && npm install && cd ../client && npm install && npm run build
+    startCommand: cd server && node index.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_DIR
+        value: /opt/render/project/data
+    disk:
+      name: linamak-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1
