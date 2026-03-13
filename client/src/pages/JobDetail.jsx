@@ -212,7 +212,7 @@ export default function JobDetail() {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            Odemeler ({(job.payments || []).length})
+            Tahsilatlar ({(job.payments || []).length})
           </button>
           <button
             onClick={() => setActiveTab('expenses')}
@@ -230,10 +230,10 @@ export default function JobDetail() {
         {activeTab === 'payments' && (
           <div>
             <div className="flex items-center justify-between p-4 border-b border-gray-100">
-              <h3 className="font-semibold text-accent-900">Odemeler</h3>
+              <h3 className="font-semibold text-accent-900">Tahsilatlar</h3>
               <button onClick={openPaymentModal} className="btn-primary text-sm">
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                Odeme Ekle
+                Tahsilat Ekle
               </button>
             </div>
             <div className="overflow-x-auto">
@@ -250,7 +250,7 @@ export default function JobDetail() {
                 <tbody className="divide-y divide-gray-100">
                   {(job.payments || []).length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-gray-400">Henuz odeme bulunmuyor</td>
+                      <td colSpan={5} className="px-4 py-8 text-center text-gray-400">Henuz tahsilat bulunmuyor</td>
                     </tr>
                   ) : (
                     (job.payments || []).map(p => (
@@ -338,8 +338,9 @@ export default function JobDetail() {
       </div>
 
       {/* Payment Modal */}
-      <Modal open={paymentModal} onClose={() => setPaymentModal(false)} title="Odeme Ekle">
+      <Modal open={paymentModal} onClose={() => setPaymentModal(false)} title="Tahsilat Ekle">
         <form onSubmit={handleSavePayment} className="space-y-4">
+          <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">Tahsilat eklendiginde otomatik olarak Gelir & Gider sayfasinda da gelir kaydı olusturulur.</p>
           <div>
             <label className="form-label">Tutar *</label>
             <input className="form-input" type="number" step="0.01" min="0" required value={paymentForm.amount} onChange={e => setP('amount', e.target.value)} />

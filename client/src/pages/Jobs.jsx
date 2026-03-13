@@ -40,6 +40,11 @@ export default function Jobs() {
   const [supplierMode, setSupplierMode] = useState('select'); // 'select' | 'type'
   const [expSaving, setExpSaving] = useState(false);
 
+  // Tahsilat modal
+  const [tahModal, setTahModal] = useState(null); // job id or null
+  const [tahForm, setTahForm] = useState({ amount: '', payment_date: '', method: 'nakit', note: '' });
+  const [tahSaving, setTahSaving] = useState(false);
+
   const fetchJobs = useCallback(async () => {
     try {
       const params = {};
@@ -194,6 +199,34 @@ export default function Jobs() {
 
   const setExp = (key, val) => setExpForm(f => ({ ...f, [key]: val }));
 
+  // Tahsilat handlers
+  const openTahsilatModal = (jobId) => {
+    setTahModal(jobId);
+    setTahForm({ amount: '', payment_date: new Date().toISOString().slice(0, 10), method: 'nakit', note: '' });
+  };
+
+  const handleTahsilatSave = async (e) => {
+    e.preventDefault();
+    setTahSaving(true);
+    try {
+      await api.post('/payments', {
+        job_id: tahModal,
+        amount: parseFloat(tahForm.amount),
+        payment_date: tahForm.payment_date,
+        method: tahForm.method,
+        note: tahForm.note,
+      });
+      setTahModal(null);
+      fetchJobs();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Tahsilat eklenirken hata olustu');
+    } finally {
+      setTahSaving(false);
+    }
+  };
+
+  const setTah = (key, val) => setTahForm(f => ({ ...f, [key]: val }));
+
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const computedKdvDahil = () => {
@@ -205,6 +238,7 @@ export default function Jobs() {
   // Summary calculations
   const totalContract = jobs.reduce((s, j) => s + Number(j.contract_value_with_kdv || 0), 0);
   const totalPaid = jobs.reduce((s, j) => s + Number(j.total_paid || 0), 0);
+  const totalExpenseAll = jobs.reduce((s, j) => s + Number(j.total_expense || 0), 0);
 
   if (loading) {
     return (
@@ -229,10 +263,11 @@ export default function Jobs() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard title="Is Sayisi" value={jobs.length} color="blue" icon="📋" />
         <StatCard title="Toplam Sozlesme" value={fmt(totalContract)} color="primary" icon="📄" />
         <StatCard title="Toplam Tahsilat" value={fmt(totalPaid)} color="green" icon="💰" />
+        <StatCard title="Toplam Gider" value={fmt(totalExpenseAll)} color="red" icon="📉" />
       </div>
 
       {/* Filters */}
@@ -310,6 +345,13 @@ export default function Jobs() {
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                         </Link>
+                        <button
+                          onClick={() => openTahsilatModal(job.id)}
+                          className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          title="Tahsilat Ekle"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </button>
                         <button
                           onClick={() => openExpenseModal(job.id)}
                           className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -440,6 +482,41 @@ export default function Jobs() {
             <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary">Iptal</button>
             <button type="submit" disabled={saving} className="btn-primary">
               {saving ? 'Kaydediliyor...' : (editing ? 'Guncelle' : 'Kaydet')}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Tahsilat Ekle Modal */}
+      <Modal open={!!tahModal} onClose={() => setTahModal(null)} title="Tahsilat Ekle">
+        <form onSubmit={handleTahsilatSave} className="space-y-4">
+          <div>
+            <label className="form-label">Tutar (₺) *</label>
+            <input className="form-input" type="number" step="0.01" min="0" required value={tahForm.amount} onChange={e => setTah('amount', e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Tarih *</label>
+            <input className="form-input" type="date" required value={tahForm.payment_date} onChange={e => setTah('payment_date', e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Odeme Yontemi</label>
+            <select className="form-input" value={tahForm.method} onChange={e => setTah('method', e.target.value)}>
+              <option value="nakit">Nakit</option>
+              <option value="havale/eft">Havale/EFT</option>
+              <option value="cek">Cek</option>
+              <option value="kredi_karti">Kredi Karti</option>
+              <option value="diger">Diger</option>
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Not</label>
+            <input className="form-input" value={tahForm.note} onChange={e => setTah('note', e.target.value)} placeholder="Tahsilat notu (opsiyonel)" />
+          </div>
+          <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">Tahsilat eklendiginde otomatik olarak Gelir kaydı da olusturulur.</p>
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            <button type="button" onClick={() => setTahModal(null)} className="btn-secondary">Iptal</button>
+            <button type="submit" disabled={tahSaving} className="btn-primary">
+              {tahSaving ? 'Kaydediliyor...' : 'Tahsilat Ekle'}
             </button>
           </div>
         </form>
