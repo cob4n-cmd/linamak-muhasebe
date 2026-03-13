@@ -104,10 +104,10 @@ export default function IncomeExpenses() {
   const fetchReferenceData = async () => {
     try {
       const [custRes, incCatRes, suppRes, expCatRes] = await Promise.all([
-        api.get('/api/customers').catch(() => ({ data: [] })),
-        api.get('/api/incomes/categories').catch(() => ({ data: [] })),
-        api.get('/api/suppliers').catch(() => ({ data: [] })),
-        api.get('/api/expenses/categories').catch(() => ({ data: [] })),
+        api.get('/customers').catch(() => ({ data: [] })),
+        api.get('/incomes/categories').catch(() => ({ data: [] })),
+        api.get('/suppliers').catch(() => ({ data: [] })),
+        api.get('/expenses/categories').catch(() => ({ data: [] })),
       ]);
       setCustomers(custRes.data || []);
       setIncomeCategories(incCatRes.data || []);
@@ -123,7 +123,7 @@ export default function IncomeExpenses() {
       setLoading(true);
       const params = { year };
       if (month) params.month = month;
-      const res = await api.get('/api/incomes', { params });
+      const res = await api.get('/incomes', { params });
       setIncomes(res.data || []);
     } catch (err) {
       console.error('Gelir yukleme hatasi:', err);
@@ -137,7 +137,7 @@ export default function IncomeExpenses() {
       setLoading(true);
       const params = { year };
       if (month) params.month = month;
-      const res = await api.get('/api/expenses', { params });
+      const res = await api.get('/expenses', { params });
       setExpenses(res.data || []);
     } catch (err) {
       console.error('Gider yukleme hatasi:', err);
@@ -211,9 +211,9 @@ export default function IncomeExpenses() {
         customer_id: incomeForm.customer_id || null,
       };
       if (editingIncomeId) {
-        await api.put(`/api/incomes/${editingIncomeId}`, payload);
+        await api.put(`/incomes/${editingIncomeId}`, payload);
       } else {
-        await api.post('/api/incomes', payload);
+        await api.post('/incomes', payload);
       }
       setIncomeModal(false);
       fetchIncomes();
@@ -228,7 +228,7 @@ export default function IncomeExpenses() {
   const deleteIncome = async (id) => {
     if (!window.confirm('Bu gelir kaydini silmek istediginize emin misiniz?')) return;
     try {
-      await api.delete(`/api/incomes/${id}`);
+      await api.delete(`/incomes/${id}`);
       fetchIncomes();
     } catch (err) {
       console.error('Gelir silme hatasi:', err);
@@ -270,9 +270,9 @@ export default function IncomeExpenses() {
         is_paid: expenseForm.is_paid ? 1 : 0,
       };
       if (editingExpenseId) {
-        await api.put(`/api/expenses/${editingExpenseId}`, payload);
+        await api.put(`/expenses/${editingExpenseId}`, payload);
       } else {
-        await api.post('/api/expenses', payload);
+        await api.post('/expenses', payload);
       }
       setExpenseModal(false);
       fetchExpenses();
@@ -287,7 +287,7 @@ export default function IncomeExpenses() {
   const deleteExpense = async (id) => {
     if (!window.confirm('Bu gider kaydini silmek istediginize emin misiniz?')) return;
     try {
-      await api.delete(`/api/expenses/${id}`);
+      await api.delete(`/expenses/${id}`);
       fetchExpenses();
     } catch (err) {
       console.error('Gider silme hatasi:', err);
