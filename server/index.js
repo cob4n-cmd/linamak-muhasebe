@@ -1,4 +1,4 @@
-require('./db'); // Initialize DB
+const { initDB } = require('./db');
 
 const express = require('express');
 const cors = require('cors');
@@ -32,6 +32,12 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`LinaMAK Muhasebe API http://0.0.0.0:${PORT} adresinde calisiyor`);
+// DB baslat sonra sunucuyu ac
+initDB().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`LinaMAK Muhasebe API http://0.0.0.0:${PORT} adresinde calisiyor`);
+  });
+}).catch(err => {
+  console.error('Veritabani baslatilamadi:', err);
+  process.exit(1);
 });
