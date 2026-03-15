@@ -18,7 +18,7 @@ const statusOptions = [
 
 const emptyForm = {
   title: '', customer_id: '', customer_name: '', description: '', status: 'beklemede',
-  invoice_status: 'faturasiz', invoice_no: '', contract_value: '', kdv_rate: 20,
+  invoice_no: '', faturali_tutar: '', faturasiz_tutar: '', kdv_rate: 20,
   start_date: '', end_date: '',
 };
 
@@ -91,9 +91,9 @@ export default function Jobs() {
       customer_name: '',
       description: job.description || '',
       status: job.status || 'beklemede',
-      invoice_status: job.invoice_status || 'faturasiz',
       invoice_no: job.invoice_no || '',
-      contract_value: job.contract_value || '',
+      faturali_tutar: job.faturali_tutar || '',
+      faturasiz_tutar: job.faturasiz_tutar || '',
       kdv_rate: job.kdv_rate || 20,
       start_date: job.start_date || '',
       end_date: job.end_date || '',
@@ -110,9 +110,9 @@ export default function Jobs() {
         title: form.title,
         description: form.description,
         status: form.status,
-        invoice_status: form.invoice_status,
-        invoice_no: form.invoice_status === 'faturali' ? form.invoice_no : '',
-        contract_value: Number(form.contract_value) || 0,
+        invoice_no: Number(form.faturali_tutar) > 0 ? form.invoice_no : '',
+        faturali_tutar: Number(form.faturali_tutar) || 0,
+        faturasiz_tutar: Number(form.faturasiz_tutar) || 0,
         kdv_rate: Number(form.kdv_rate) || 20,
         start_date: form.start_date || null,
         end_date: form.end_date || null,
@@ -229,10 +229,14 @@ export default function Jobs() {
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
-  const computedKdvDahil = () => {
-    const val = Number(form.contract_value) || 0;
+  const computedFaturaliKdvDahil = () => {
+    const ft = Number(form.faturali_tutar) || 0;
     const rate = Number(form.kdv_rate) || 0;
-    return Math.round(val * (1 + rate / 100) * 100) / 100;
+    return Math.round(ft * (1 + rate / 100) * 100) / 100;
+  };
+
+  const computedToplamAnlasma = () => {
+    return computedFaturaliKdvDahil() + (Number(form.faturasiz_tutar) || 0);
   };
 
   // Summary calculations
@@ -422,46 +426,50 @@ export default function Jobs() {
             <textarea className="form-input" rows={3} value={form.description} onChange={e => set('description', e.target.value)} />
           </div>
 
-          {/* Status & Invoice */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">Durum</label>
-              <select className="form-input" value={form.status} onChange={e => set('status', e.target.value)}>
-                {statusOptions.filter(o => o.value !== 'all').map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Fatura Durumu</label>
-              <select className="form-input" value={form.invoice_status} onChange={e => set('invoice_status', e.target.value)}>
-                <option value="faturasiz">Faturasiz</option>
-                <option value="faturali">Faturali</option>
-              </select>
-            </div>
+          {/* Status */}
+          <div>
+            <label className="form-label">Durum</label>
+            <select className="form-input" value={form.status} onChange={e => set('status', e.target.value)}>
+              {statusOptions.filter(o => o.value !== 'all').map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Invoice No (conditional) */}
-          {form.invoice_status === 'faturali' && (
-            <div>
-              <label className="form-label">Fatura No</label>
-              <input className="form-input" value={form.invoice_no} onChange={e => set('invoice_no', e.target.value)} placeholder="Fatura numarasi" />
-            </div>
-          )}
-
-          {/* Contract & KDV */}
+          {/* Faturali Tutar & KDV */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="form-label">Sozlesme Bedeli</label>
-              <input className="form-input" type="number" step="0.01" min="0" value={form.contract_value} onChange={e => set('contract_value', e.target.value)} />
+              <label className="form-label">Faturali Tutar</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={form.faturali_tutar} onChange={e => set('faturali_tutar', e.target.value)} placeholder="KDV'li kisim" />
             </div>
             <div>
               <label className="form-label">KDV Orani (%)</label>
               <input className="form-input" type="number" step="1" min="0" max="100" value={form.kdv_rate} onChange={e => set('kdv_rate', e.target.value)} />
             </div>
             <div>
-              <label className="form-label">KDV Dahil Tutar</label>
-              <div className="form-input bg-gray-50 text-gray-700 font-medium">{fmt(computedKdvDahil())}</div>
+              <label className="form-label">KDV Dahil Faturali</label>
+              <div className="form-input bg-gray-50 text-gray-700 font-medium">{fmt(computedFaturaliKdvDahil())}</div>
+            </div>
+          </div>
+
+          {/* Invoice No (conditional) */}
+          {Number(form.faturali_tutar) > 0 && (
+            <div>
+              <label className="form-label">Fatura No</label>
+              <input className="form-input" value={form.invoice_no} onChange={e => set('invoice_no', e.target.value)} placeholder="Fatura numarasi" />
+            </div>
+          )}
+
+          {/* Faturasiz Tutar & Toplam */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="form-label">Faturasiz Tutar</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={form.faturasiz_tutar} onChange={e => set('faturasiz_tutar', e.target.value)} placeholder="KDV'siz kisim" />
+            </div>
+            <div></div>
+            <div>
+              <label className="form-label">Toplam Anlasma</label>
+              <div className="form-input bg-primary-50 text-primary-700 font-bold">{fmt(computedToplamAnlasma())}</div>
             </div>
           </div>
 

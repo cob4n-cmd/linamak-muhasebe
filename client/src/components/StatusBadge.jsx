@@ -19,11 +19,13 @@ const statusLabels = {
 const invoiceColors = {
   faturali: 'bg-emerald-100 text-emerald-800',
   faturasiz: 'bg-gray-100 text-gray-600',
+  karma: 'bg-amber-100 text-amber-800',
 };
 
 const invoiceLabels = {
   faturali: 'Faturali',
   faturasiz: 'Faturasiz',
+  karma: 'Karma',
 };
 
 export default function StatusBadge({ status, type = 'status' }) {

@@ -195,7 +195,7 @@ export default function JobDetail() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard title="Sozlesme Bedeli" value={fmt(job.contract_value_with_kdv)} sub="KDV dahil" color="primary" icon="📄" />
+        <StatCard title="Toplam Anlasma" value={fmt(job.contract_value_with_kdv)} sub={`Faturali: ${fmt(job.faturali_tutar)} | Faturasiz: ${fmt(job.faturasiz_tutar)}`} color="primary" icon="📄" />
         <StatCard title="Tahsilat" value={fmt(totalPaid)} color="green" icon="💰" />
         <StatCard title="Giderler" value={fmt(totalExpense)} color="red" icon="📉" />
         <StatCard title="Kar" value={fmt(profit)} color={profit >= 0 ? 'green' : 'red'} icon={profit >= 0 ? '📈' : '📉'} />

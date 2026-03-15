@@ -222,6 +222,21 @@ async function initDB() {
     await client.execute(sql);
   }
 
+  // Migration: faturali/faturasiz tutar ayrimi
+  const migrations = [
+    "ALTER TABLE jobs ADD COLUMN faturali_tutar REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE jobs ADD COLUMN faturasiz_tutar REAL NOT NULL DEFAULT 0",
+  ];
+  for (const sql of migrations) {
+    try { await client.execute(sql); } catch (e) { /* column already exists */ }
+  }
+
+  // Mevcut verileri migrate et
+  await db.run("UPDATE jobs SET faturali_tutar = contract_value, faturasiz_tutar = 0 WHERE faturali_tutar = 0 AND faturasiz_tutar = 0 AND invoice_status = 'faturali'");
+  await db.run("UPDATE jobs SET faturali_tutar = 0, faturasiz_tutar = contract_value WHERE faturali_tutar = 0 AND faturasiz_tutar = 0 AND invoice_status = 'faturasiz'");
+  // Karma olmayan, henuz set edilmemis olanlari faturasiz olarak kabul et
+  await db.run("UPDATE jobs SET faturasiz_tutar = contract_value WHERE faturali_tutar = 0 AND faturasiz_tutar = 0 AND contract_value > 0");
+
   // Seed: Admin kullanici
   const adminExists = await db.get('SELECT id FROM users WHERE username = ?', 'admin');
   if (!adminExists) {

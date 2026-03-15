@@ -32,11 +32,10 @@ router.get('/:id', async (req, res) => {
 
 // Create job
 router.post('/', async (req, res) => {
-  const { title, customer_id, customer_name, description, status, invoice_status, invoice_no, contract_value, kdv_rate, start_date, end_date } = req.body;
+  const { title, customer_id, customer_name, description, status, invoice_no, faturali_tutar, faturasiz_tutar, kdv_rate, start_date, end_date } = req.body;
   if (!title) return res.status(400).json({ error: 'Is basligi gerekli' });
 
   let cid = customer_id;
-  // Auto-create customer if name provided but no id
   if (!cid && customer_name) {
     const existing = await db.get('SELECT id FROM customers WHERE name = ?', customer_name);
     if (existing) {
@@ -47,21 +46,24 @@ router.post('/', async (req, res) => {
     }
   }
 
-  const rate = kdv_rate || 20;
-  const val = contract_value || 0;
-  const valWithKdv = Math.round(val * (1 + rate / 100) * 100) / 100;
+  const rate = Number(kdv_rate) || 20;
+  const ft = Number(faturali_tutar) || 0;
+  const fst = Number(faturasiz_tutar) || 0;
+  const contract_value = ft + fst;
+  const contract_value_with_kdv = Math.round((ft * (1 + rate / 100) + fst) * 100) / 100;
+  const invoice_status = ft > 0 && fst > 0 ? 'karma' : ft > 0 ? 'faturali' : 'faturasiz';
 
-  const r = await db.run(`INSERT INTO jobs (title, customer_id, description, status, invoice_status, invoice_no, contract_value, kdv_rate, contract_value_with_kdv, start_date, end_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    title, cid || null, description || '', status || 'beklemede', invoice_status || 'faturasiz', invoice_no || '',
-    val, rate, valWithKdv, start_date || null, end_date || null
+  const r = await db.run(`INSERT INTO jobs (title, customer_id, description, status, invoice_status, invoice_no, contract_value, kdv_rate, contract_value_with_kdv, faturali_tutar, faturasiz_tutar, start_date, end_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    title, cid || null, description || '', status || 'beklemede', invoice_status, invoice_no || '',
+    contract_value, rate, contract_value_with_kdv, ft, fst, start_date || null, end_date || null
   );
   res.json({ id: Number(r.lastInsertRowid), customer_id: cid, success: true });
 });
 
 // Update job
 router.put('/:id', async (req, res) => {
-  const { title, customer_id, customer_name, description, status, invoice_status, invoice_no, contract_value, kdv_rate, start_date, end_date } = req.body;
+  const { title, customer_id, customer_name, description, status, invoice_no, faturali_tutar, faturasiz_tutar, kdv_rate, start_date, end_date } = req.body;
 
   let cid = customer_id;
   if (!cid && customer_name) {
@@ -73,12 +75,15 @@ router.put('/:id', async (req, res) => {
     }
   }
 
-  const rate = kdv_rate || 20;
-  const val = contract_value || 0;
-  const valWithKdv = Math.round(val * (1 + rate / 100) * 100) / 100;
+  const rate = Number(kdv_rate) || 20;
+  const ft = Number(faturali_tutar) || 0;
+  const fst = Number(faturasiz_tutar) || 0;
+  const contract_value = ft + fst;
+  const contract_value_with_kdv = Math.round((ft * (1 + rate / 100) + fst) * 100) / 100;
+  const invoice_status = ft > 0 && fst > 0 ? 'karma' : ft > 0 ? 'faturali' : 'faturasiz';
 
-  await db.run(`UPDATE jobs SET title=?, customer_id=?, description=?, status=?, invoice_status=?, invoice_no=?, contract_value=?, kdv_rate=?, contract_value_with_kdv=?, start_date=?, end_date=?, updated_at=datetime('now','localtime') WHERE id=?`,
-    title, cid || null, description || '', status || 'beklemede', invoice_status || 'faturasiz', invoice_no || '', val, rate, valWithKdv, start_date || null, end_date || null, req.params.id);
+  await db.run(`UPDATE jobs SET title=?, customer_id=?, description=?, status=?, invoice_status=?, invoice_no=?, contract_value=?, kdv_rate=?, contract_value_with_kdv=?, faturali_tutar=?, faturasiz_tutar=?, start_date=?, end_date=?, updated_at=datetime('now','localtime') WHERE id=?`,
+    title, cid || null, description || '', status || 'beklemede', invoice_status, invoice_no || '', contract_value, rate, contract_value_with_kdv, ft, fst, start_date || null, end_date || null, req.params.id);
   res.json({ success: true });
 });
 

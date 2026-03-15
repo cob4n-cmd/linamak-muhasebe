@@ -21,8 +21,8 @@ router.get('/summary/:year/:month', async (req, res) => {
   const expenseKdv = expenseKdvRow.total;
 
   // Faturali is KDV'leri (gelir tarafinda)
-  const jobKdvRow = await db.get(`SELECT COALESCE(SUM(j.contract_value * j.kdv_rate / 100), 0) as total FROM jobs j
-    WHERE j.invoice_status = 'faturali' AND strftime('%Y', j.start_date) = ? AND strftime('%m', j.start_date) = ?`, year, m);
+  const jobKdvRow = await db.get(`SELECT COALESCE(SUM(j.faturali_tutar * j.kdv_rate / 100), 0) as total FROM jobs j
+    WHERE j.faturali_tutar > 0 AND strftime('%Y', j.start_date) = ? AND strftime('%m', j.start_date) = ?`, year, m);
   const jobKdv = jobKdvRow.total;
 
   const hesaplananKdv = Math.round((incomeKdv + jobKdv) * 100) / 100;
@@ -47,8 +47,8 @@ router.get('/summary/:year', async (req, res) => {
     const incomeKdvRow = await db.get(`SELECT COALESCE(SUM(kdv_amount), 0) as total FROM incomes
       WHERE strftime('%Y', income_date) = ? AND strftime('%m', income_date) = ? AND invoice_no != ''`, year, m);
     const incomeKdv = incomeKdvRow.total;
-    const jobKdvRow = await db.get(`SELECT COALESCE(SUM(j.contract_value * j.kdv_rate / 100), 0) as total FROM jobs j
-      WHERE j.invoice_status = 'faturali' AND strftime('%Y', j.start_date) = ? AND strftime('%m', j.start_date) = ?`, year, m);
+    const jobKdvRow = await db.get(`SELECT COALESCE(SUM(j.faturali_tutar * j.kdv_rate / 100), 0) as total FROM jobs j
+      WHERE j.faturali_tutar > 0 AND strftime('%Y', j.start_date) = ? AND strftime('%m', j.start_date) = ?`, year, m);
     const jobKdv = jobKdvRow.total;
     const expenseKdvRow = await db.get(`SELECT COALESCE(SUM(kdv_amount), 0) as total FROM expenses
       WHERE strftime('%Y', expense_date) = ? AND strftime('%m', expense_date) = ?`, year, m);

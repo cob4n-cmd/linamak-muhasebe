@@ -9,13 +9,16 @@ router.use(auth);
 router.post('/', async (req, res) => {
   const { job_id, amount, payment_date, method, note } = req.body;
   if (!job_id || !amount || !payment_date) return res.status(400).json({ error: 'Is, tutar ve tarih gerekli' });
-  const job = await db.get('SELECT customer_id, title FROM jobs WHERE id = ?', job_id);
+  const job = await db.get('SELECT customer_id, title, faturali_tutar, faturasiz_tutar, kdv_rate FROM jobs WHERE id = ?', job_id);
   const customer_id = job ? job.customer_id : null;
   const r = await db.run('INSERT INTO payments (job_id, customer_id, amount, payment_date, method, note) VALUES (?, ?, ?, ?, ?, ?)',
     job_id, customer_id, amount, payment_date, method || 'nakit', note || '');
 
-  // Otomatik gelir kaydı oluştur
-  const kdv_rate = 20;
+  // Otomatik gelir kaydı oluştur - faturalı/faturasız oranına göre KDV hesapla
+  const totalNet = job ? (Number(job.faturali_tutar) + Number(job.faturasiz_tutar)) : 0;
+  const faturaliRatio = totalNet > 0 ? Number(job.faturali_tutar) / totalNet : 0;
+  const effectiveKdvRate = Math.round(faturaliRatio * (Number(job?.kdv_rate) || 20) * 100) / 100;
+  const kdv_rate = effectiveKdvRate;
   const kdv_amount = Math.round(amount * kdv_rate / 100 * 100) / 100;
   const total_with_kdv = Math.round((amount + kdv_amount) * 100) / 100;
   const description = job ? `${job.title} - Tahsilat` : 'Tahsilat';
