@@ -222,10 +222,11 @@ async function initDB() {
     await client.execute(sql);
   }
 
-  // Migration: faturali/faturasiz tutar ayrimi
+  // Migration: faturali/faturasiz tutar ayrimi + supplier_debts job_id
   const migrations = [
     "ALTER TABLE jobs ADD COLUMN faturali_tutar REAL NOT NULL DEFAULT 0",
     "ALTER TABLE jobs ADD COLUMN faturasiz_tutar REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE supplier_debts ADD COLUMN job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL",
   ];
   for (const sql of migrations) {
     try { await client.execute(sql); } catch (e) { /* column already exists */ }

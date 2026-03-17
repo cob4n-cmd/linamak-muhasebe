@@ -22,7 +22,20 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const s = await db.get('SELECT * FROM suppliers WHERE id = ?', req.params.id);
   if (!s) return res.status(404).json({ error: 'Tedarikci bulunamadi' });
-  s.debts = await db.all('SELECT * FROM supplier_debts WHERE supplier_id = ? ORDER BY debt_date DESC', req.params.id);
+  s.debts = await db.all(`SELECT d.*, d.total_with_kdv as total_amount,
+    CASE WHEN d.is_paid = 1 THEN 'paid' ELSE 'unpaid' END as status,
+    j.title as job_title
+    FROM supplier_debts d
+    LEFT JOIN jobs j ON j.id = d.job_id
+    WHERE d.supplier_id = ? ORDER BY d.debt_date DESC`, req.params.id);
+  // Hesap hareketleri: odeme yapilan borclar
+  s.transactions = await db.all(`SELECT d.id, d.description, d.total_with_kdv as amount, d.paid_date as date,
+    d.payment_method, j.title as job_title,
+    'odeme' as type
+    FROM supplier_debts d
+    LEFT JOIN jobs j ON j.id = d.job_id
+    WHERE d.supplier_id = ? AND d.is_paid = 1
+    ORDER BY d.paid_date DESC`, req.params.id);
   res.json(s);
 });
 
@@ -51,12 +64,12 @@ router.delete('/:id', async (req, res) => {
 
 // Add debt
 router.post('/:id/debts', async (req, res) => {
-  const { description, amount, kdv_rate, debt_date, due_date, note } = req.body;
+  const { description, amount, kdv_rate, debt_date, due_date, note, job_id } = req.body;
   if (!amount || !debt_date) return res.status(400).json({ error: 'Tutar ve tarih gerekli' });
   const rate = kdv_rate || 20;
   const total_with_kdv = Math.round(amount * (1 + rate / 100) * 100) / 100;
-  const r = await db.run(`INSERT INTO supplier_debts (supplier_id, description, amount, kdv_rate, total_with_kdv, debt_date, due_date, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, req.params.id, description || '', amount, rate, total_with_kdv, debt_date, due_date || null, note || '');
+  const r = await db.run(`INSERT INTO supplier_debts (supplier_id, description, amount, kdv_rate, total_with_kdv, debt_date, due_date, note, job_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, req.params.id, description || '', amount, rate, total_with_kdv, debt_date, due_date || null, note || '', job_id || null);
   res.json({ id: Number(r.lastInsertRowid), success: true });
 });
 
