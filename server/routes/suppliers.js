@@ -5,14 +5,14 @@ const { auth } = require('../middleware/auth');
 
 router.use(auth);
 
-// List suppliers
+// List suppliers - borc hesaplamasi expenses tablosundan
 router.get('/', async (req, res) => {
   const { search } = req.query;
   let sql = `SELECT s.*,
-    COALESCE((SELECT SUM(d.total_with_kdv) FROM supplier_debts d WHERE d.supplier_id = s.id AND d.is_paid = 0), 0) as unpaid_debt,
-    COALESCE((SELECT SUM(d.total_with_kdv) FROM supplier_debts d WHERE d.supplier_id = s.id AND d.is_paid = 1), 0) as paid_debt,
-    COALESCE((SELECT SUM(d.total_with_kdv) FROM supplier_debts d WHERE d.supplier_id = s.id), 0) as total_debt,
-    COALESCE((SELECT SUM(e.total_with_kdv) FROM expenses e WHERE e.supplier_id = s.id), 0) as total_expense
+    COALESCE((SELECT SUM(e.total_with_kdv) FROM expenses e WHERE e.supplier_id = s.id AND e.is_paid = 0), 0) as unpaid_debt,
+    COALESCE((SELECT SUM(e.total_with_kdv) FROM expenses e WHERE e.supplier_id = s.id AND e.is_paid = 1), 0) as paid_total,
+    COALESCE((SELECT SUM(e.total_with_kdv) FROM expenses e WHERE e.supplier_id = s.id), 0) as total_debt,
+    COALESCE((SELECT COUNT(*) FROM expenses e WHERE e.supplier_id = s.id), 0) as transaction_count
     FROM suppliers s`;
   const params = [];
   if (search) { sql += ` WHERE s.name LIKE ? OR s.contact_person LIKE ?`; params.push(`%${search}%`, `%${search}%`); }
@@ -20,45 +20,25 @@ router.get('/', async (req, res) => {
   res.json(await db.all(sql, ...params));
 });
 
-// Single supplier
+// Single supplier - tum alisverisler
 router.get('/:id', async (req, res) => {
   const s = await db.get('SELECT * FROM suppliers WHERE id = ?', req.params.id);
   if (!s) return res.status(404).json({ error: 'Tedarikci bulunamadi' });
-  // Borclar
-  s.debts = await db.all(`SELECT d.*, d.total_with_kdv as total_amount,
-    CASE WHEN d.is_paid = 1 THEN 'paid' ELSE 'unpaid' END as status,
-    j.title as job_title
-    FROM supplier_debts d
-    LEFT JOIN jobs j ON j.id = d.job_id
-    WHERE d.supplier_id = ? ORDER BY d.debt_date DESC`, req.params.id);
-  // Giderler (expenses) - bu tedarikçiden yapılan alımlar
-  s.purchases = await db.all(`SELECT e.id, e.description, e.amount, e.kdv_rate, e.total_with_kdv,
-    e.expense_date, e.is_paid, e.payment_method, e.category,
-    j.title as job_title, j.id as job_id
+
+  // Tum alisverisler (expenses tablosundan)
+  s.expenses = await db.all(`SELECT e.*,
+    j.title as job_title,
+    s2.name as supplier_name
     FROM expenses e
     LEFT JOIN jobs j ON j.id = e.job_id
+    LEFT JOIN suppliers s2 ON s2.id = e.supplier_id
     WHERE e.supplier_id = ? ORDER BY e.expense_date DESC`, req.params.id);
-  // Hesap hareketleri: tüm borç ödemeleri + gider ödemeleri
-  const debtPayments = await db.all(`SELECT d.id, d.description, d.total_with_kdv as amount, d.paid_date as date,
-    d.payment_method, j.title as job_title,
-    'borc_odeme' as type
-    FROM supplier_debts d
-    LEFT JOIN jobs j ON j.id = d.job_id
-    WHERE d.supplier_id = ? AND d.is_paid = 1
-    ORDER BY d.paid_date DESC`, req.params.id);
-  const expensePayments = await db.all(`SELECT e.id, e.description, e.total_with_kdv as amount, e.expense_date as date,
-    e.payment_method, j.title as job_title,
-    'gider' as type
-    FROM expenses e
-    LEFT JOIN jobs j ON j.id = e.job_id
-    WHERE e.supplier_id = ?
-    ORDER BY e.expense_date DESC`, req.params.id);
-  // Birleştir ve tarihe göre sırala
-  s.transactions = [...debtPayments, ...expensePayments].sort((a, b) => {
-    const da = a.date || '0000';
-    const db2 = b.date || '0000';
-    return db2.localeCompare(da);
-  });
+
+  // Ozet hesaplamalar
+  s.unpaid_debt = s.expenses.filter(e => !e.is_paid).reduce((sum, e) => sum + Number(e.total_with_kdv || 0), 0);
+  s.paid_total = s.expenses.filter(e => e.is_paid).reduce((sum, e) => sum + Number(e.total_with_kdv || 0), 0);
+  s.total_debt = s.unpaid_debt + s.paid_total;
+
   res.json(s);
 });
 
@@ -85,38 +65,31 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// Add debt
-router.post('/:id/debts', async (req, res) => {
-  const { description, amount, kdv_rate, debt_date, due_date, note, job_id } = req.body;
-  if (!amount || !debt_date) return res.status(400).json({ error: 'Tutar ve tarih gerekli' });
-  const rate = kdv_rate || 20;
-  const total_with_kdv = Math.round(amount * (1 + rate / 100) * 100) / 100;
-  const r = await db.run(`INSERT INTO supplier_debts (supplier_id, description, amount, kdv_rate, total_with_kdv, debt_date, due_date, note, job_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, req.params.id, description || '', amount, rate, total_with_kdv, debt_date, due_date || null, note || '', job_id || null);
-  res.json({ id: Number(r.lastInsertRowid), success: true });
-});
-
-// Update debt
-router.put('/debts/:debtId', async (req, res) => {
-  const { description, amount, kdv_rate, debt_date, due_date, note } = req.body;
-  const rate = kdv_rate || 20;
-  const total_with_kdv = Math.round(amount * (1 + rate / 100) * 100) / 100;
-  await db.run(`UPDATE supplier_debts SET description=?, amount=?, kdv_rate=?, total_with_kdv=?, debt_date=?, due_date=?, note=? WHERE id=?`,
-    description || '', amount, rate, total_with_kdv, debt_date, due_date || null, note || '', req.params.debtId);
-  res.json({ success: true });
-});
-
-// Pay debt
-router.put('/debts/:debtId/pay', async (req, res) => {
+// Masraf odendi/odenmedi isaretle
+router.put('/expenses/:expenseId/toggle-paid', async (req, res) => {
   const { payment_method } = req.body;
-  await db.run(`UPDATE supplier_debts SET is_paid = 1, paid_date = date('now','localtime'), payment_method = ? WHERE id = ?`,
-    payment_method || 'nakit', req.params.debtId);
+  const expense = await db.get('SELECT * FROM expenses WHERE id = ?', req.params.expenseId);
+  if (!expense) return res.status(404).json({ error: 'Masraf bulunamadi' });
+  const newPaid = expense.is_paid ? 0 : 1;
+  await db.run('UPDATE expenses SET is_paid = ?, payment_method = ? WHERE id = ?',
+    newPaid, payment_method || expense.payment_method || 'nakit', req.params.expenseId);
+  res.json({ success: true, is_paid: newPaid });
+});
+
+// Masraf guncelle
+router.put('/expenses/:expenseId', async (req, res) => {
+  const { description, amount, kdv_rate, expense_date, category, job_id, note } = req.body;
+  const rate = kdv_rate || 20;
+  const kdv_amount = Math.round(amount * rate / 100 * 100) / 100;
+  const total_with_kdv = Math.round((amount + kdv_amount) * 100) / 100;
+  await db.run(`UPDATE expenses SET description=?, amount=?, kdv_rate=?, kdv_amount=?, total_with_kdv=?, expense_date=?, category=?, job_id=? WHERE id=?`,
+    description || '', amount, rate, kdv_amount, total_with_kdv, expense_date, category || 'Genel', job_id || null, req.params.expenseId);
   res.json({ success: true });
 });
 
-// Delete debt
-router.delete('/debts/:debtId', async (req, res) => {
-  await db.run('DELETE FROM supplier_debts WHERE id = ?', req.params.debtId);
+// Masraf sil (supplier detail'den)
+router.delete('/expenses/:expenseId', async (req, res) => {
+  await db.run('DELETE FROM expenses WHERE id = ?', req.params.expenseId);
   res.json({ success: true });
 });
 

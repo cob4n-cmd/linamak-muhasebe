@@ -6,20 +6,18 @@ import StatCard from '../components/StatCard';
 
 const fmt = v => Number(v || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
 
-const emptyDebt = {
-  description: '', amount: '', kdv_rate: '20', debt_date: '', due_date: '', note: '', job_id: ''
-};
-
 export default function SupplierDetail() {
   const { id } = useParams();
   const [supplier, setSupplier] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState(emptyDebt);
-  const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState('all'); // all | unpaid | paid
   const [jobs, setJobs] = useState([]);
-  const [activeTab, setActiveTab] = useState('debts'); // debts | purchases | transactions
+  const [categories, setCategories] = useState([]);
+
+  // Edit modal
+  const [editModal, setEditModal] = useState(null); // expense object or null
+  const [editForm, setEditForm] = useState({ description: '', amount: '', kdv_rate: 20, expense_date: '', category: 'Genel', job_id: '' });
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchSupplier = useCallback(async () => {
     try {
@@ -40,56 +38,63 @@ export default function SupplierDetail() {
     } catch (err) { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetchSupplier(); fetchJobs(); }, [fetchSupplier, fetchJobs]);
+  useEffect(() => {
+    fetchSupplier();
+    fetchJobs();
+    api.get('/expenses/categories').then(r => setCategories(r.data)).catch(() => {});
+  }, [fetchSupplier, fetchJobs]);
 
-  const openNew = () => {
-    setForm({ ...emptyDebt, debt_date: new Date().toISOString().split('T')[0] });
-    setModalOpen(true);
-  };
-
-  const handleSave = async e => {
-    e.preventDefault();
-    setSaving(true);
+  const handleTogglePaid = async (expenseId) => {
     try {
-      await api.post(`/suppliers/${id}/debts`, {
-        ...form,
-        amount: Number(form.amount),
-        kdv_rate: Number(form.kdv_rate),
-        job_id: form.job_id ? Number(form.job_id) : null
-      });
-      setModalOpen(false);
-      fetchSupplier();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Hata olustu');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handlePay = async (debtId) => {
-    if (!window.confirm('Bu borcu odendi olarak isaretlemek istiyor musunuz?')) return;
-    try {
-      await api.put(`/suppliers/debts/${debtId}/pay`);
+      await api.put(`/suppliers/expenses/${expenseId}/toggle-paid`);
       fetchSupplier();
     } catch (err) {
       alert(err.response?.data?.error || 'Hata olustu');
     }
   };
 
-  const handleDelete = async (debtId) => {
-    if (!window.confirm('Bu borcu silmek istediginize emin misiniz?')) return;
+  const handleDelete = async (expenseId) => {
+    if (!window.confirm('Bu kaydi silmek istediginize emin misiniz?')) return;
     try {
-      await api.delete(`/suppliers/debts/${debtId}`);
+      await api.delete(`/suppliers/expenses/${expenseId}`);
       fetchSupplier();
     } catch (err) {
       alert(err.response?.data?.error || 'Silme hatasi');
     }
   };
 
-  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const openEdit = (expense) => {
+    setEditModal(expense);
+    setEditForm({
+      description: expense.description || '',
+      amount: expense.amount || '',
+      kdv_rate: expense.kdv_rate || 20,
+      expense_date: expense.expense_date || '',
+      category: expense.category || 'Genel',
+      job_id: expense.job_id || '',
+    });
+  };
 
-  const kdvAmount = (Number(form.amount) || 0) * (Number(form.kdv_rate) || 0) / 100;
-  const totalWithKdv = (Number(form.amount) || 0) + kdvAmount;
+  const handleEditSave = async (e) => {
+    e.preventDefault();
+    setEditSaving(true);
+    try {
+      await api.put(`/suppliers/expenses/${editModal.id}`, {
+        ...editForm,
+        amount: Number(editForm.amount),
+        kdv_rate: Number(editForm.kdv_rate),
+        job_id: editForm.job_id ? Number(editForm.job_id) : null,
+      });
+      setEditModal(null);
+      fetchSupplier();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Hata olustu');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const setEdit = (key, val) => setEditForm(f => ({ ...f, [key]: val }));
 
   if (loading) {
     return <div className="text-center py-12 text-gray-400">Yukleniyor...</div>;
@@ -106,24 +111,24 @@ export default function SupplierDetail() {
     );
   }
 
-  const debts = supplier.debts || [];
-  const purchases = supplier.purchases || [];
-  const transactions = supplier.transactions || [];
-  const filteredDebts = debts.filter(d => {
-    if (filter === 'unpaid') return d.status === 'unpaid';
-    if (filter === 'paid') return d.status === 'paid';
+  const expenses = supplier.expenses || [];
+  const filteredExpenses = expenses.filter(e => {
+    if (filter === 'unpaid') return !e.is_paid;
+    if (filter === 'paid') return e.is_paid;
     return true;
   });
 
-  const unpaidTotal = debts.filter(d => d.status === 'unpaid').reduce((s, d) => s + Number(d.total_amount || d.total_with_kdv || d.amount || 0), 0);
-  const paidTotal = debts.filter(d => d.status === 'paid').reduce((s, d) => s + Number(d.total_amount || d.total_with_kdv || d.amount || 0), 0);
-  const purchaseTotal = purchases.reduce((s, p) => s + Number(p.total_with_kdv || p.amount || 0), 0);
+  const unpaidTotal = expenses.filter(e => !e.is_paid).reduce((s, e) => s + Number(e.total_with_kdv || 0), 0);
+  const paidTotal = expenses.filter(e => e.is_paid).reduce((s, e) => s + Number(e.total_with_kdv || 0), 0);
   const grandTotal = unpaidTotal + paidTotal;
 
   const formatDate = (d) => {
     if (!d) return '-';
     return new Date(d).toLocaleDateString('tr-TR');
   };
+
+  const editKdvAmount = (Number(editForm.amount) || 0) * (Number(editForm.kdv_rate) || 0) / 100;
+  const editTotalWithKdv = (Number(editForm.amount) || 0) + editKdvAmount;
 
   return (
     <div className="space-y-6">
@@ -167,414 +172,214 @@ export default function SupplierDetail() {
               )}
             </div>
           </div>
-          <button onClick={openNew} className="btn-primary shrink-0">
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Borc Ekle
-          </button>
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard title="Odenmemis Borc" value={fmt(unpaidTotal)} color="red" icon="⏳" />
-        <StatCard title="Odenen Tutar" value={fmt(paidTotal)} color="green" icon="✓" />
-        <StatCard title="Toplam Alisveris" value={fmt(purchaseTotal)} color="blue" icon="🛒" />
-        <StatCard title="Toplam Borc" value={fmt(grandTotal)} color="gray" icon="📊" />
+        <StatCard title="Odenen Toplam" value={fmt(paidTotal)} color="green" icon="✓" />
+        <StatCard title="Genel Toplam" value={fmt(grandTotal)} color="gray" icon="📊" />
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('debts')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'debts'
-              ? 'border-primary-500 text-primary-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Borclar ({debts.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('purchases')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'purchases'
-              ? 'border-primary-500 text-primary-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Alinan Malzemeler ({purchases.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('transactions')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'transactions'
-              ? 'border-primary-500 text-primary-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Hesap Hareketleri ({transactions.length})
-        </button>
+      {/* Filter Buttons */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          {[
+            { key: 'all', label: 'Tumu', count: expenses.length },
+            { key: 'unpaid', label: 'Odenmemis', count: expenses.filter(e => !e.is_paid).length },
+            { key: 'paid', label: 'Odenmis', count: expenses.filter(e => e.is_paid).length },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                filter === f.key
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {f.label} ({f.count})
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 hidden sm:block">
+          Masraflar, is detayindan tedarikci secilerek eklenir
+        </p>
       </div>
 
-      {/* Borclar Tab */}
-      {activeTab === 'debts' && (
-        <>
-          <div className="flex gap-2">
-            {[
-              { key: 'all', label: 'Tumu', count: debts.length },
-              { key: 'unpaid', label: 'Bekleyen', count: debts.filter(d => d.status === 'unpaid').length },
-              { key: 'paid', label: 'Odenen', count: debts.filter(d => d.status === 'paid').length },
-            ].map(f => (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === f.key
-                    ? 'bg-primary-500 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {f.label} ({f.count})
-              </button>
-            ))}
+      {/* Expenses Table */}
+      {filteredExpenses.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-gray-400 text-lg">
+            {filter === 'all' ? 'Bu tedarikciden henuz alisveris yapilmamis' :
+             filter === 'unpaid' ? 'Odenmemis borc yok' : 'Odenmis kayit yok'}
+          </p>
+          {filter === 'all' && (
+            <p className="text-gray-400 text-sm mt-1">Is masraflarinda bu tedarikciyi sectiginizde burada gorunecektir</p>
+          )}
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tarih</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Aciklama</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Kategori</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Is</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">Tutar</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">KDV Dahil</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600">Durum</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Islemler</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredExpenses.map(e => (
+                  <tr key={e.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(e.expense_date)}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-medium text-accent-900">{e.description || e.category}</span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap hidden sm:table-cell">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                        {e.category}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap hidden md:table-cell">
+                      {e.job_title ? (
+                        <Link to={`/jobs/${e.job_id}`} className="text-primary-600 hover:underline text-xs">
+                          {e.job_title}
+                        </Link>
+                      ) : (
+                        <span className="text-gray-400 text-xs">Genel</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap hidden sm:table-cell">{fmt(e.amount)}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{fmt(e.total_with_kdv)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleTogglePaid(e.id)}
+                        className="cursor-pointer"
+                        title={e.is_paid ? 'Odenmemis olarak isaretle' : 'Odendi olarak isaretle'}
+                      >
+                        {e.is_paid ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition-colors">
+                            Odendi
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 transition-colors">
+                            Odenmedi
+                          </span>
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(e)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          title="Duzenle"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(e.id)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Sil"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-gray-50 border-t border-gray-200">
+                  <td colSpan={5} className="px-4 py-3 font-bold text-accent-900 hidden sm:table-cell">
+                    {filter === 'unpaid' ? 'Odenmemis Toplam' : filter === 'paid' ? 'Odenmis Toplam' : 'Genel Toplam'}
+                  </td>
+                  <td colSpan={2} className="px-4 py-3 font-bold text-accent-900 sm:hidden">Toplam</td>
+                  <td className="px-4 py-3 text-right font-bold text-accent-900">
+                    {fmt(filteredExpenses.reduce((s, e) => s + Number(e.total_with_kdv || 0), 0))}
+                  </td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      <Modal open={!!editModal} onClose={() => setEditModal(null)} title="Masraf Duzenle" size="md">
+        <form onSubmit={handleEditSave} className="space-y-4">
+          <div>
+            <label className="form-label">Aciklama</label>
+            <input className="form-input" value={editForm.description} onChange={e => setEdit('description', e.target.value)} />
           </div>
 
-          {filteredDebts.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-lg">Borc kaydi bulunamadi</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Tutar (₺) *</label>
+              <input className="form-input" type="number" step="0.01" min="0" required value={editForm.amount} onChange={e => setEdit('amount', e.target.value)} />
             </div>
-          ) : (
-            <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Tarih</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Aciklama</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Is</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">Tutar</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">KDV Dahil</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Vade Tarihi</th>
-                      <th className="text-center px-4 py-3 font-medium text-gray-600">Durum</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">Islemler</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredDebts.map(d => (
-                      <tr key={d.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">{formatDate(d.debt_date)}</td>
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-accent-900">{d.description}</span>
-                          {d.note && <p className="text-xs text-gray-400 mt-0.5">{d.note}</p>}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {d.job_title ? (
-                            <Link to={`/jobs/${d.job_id}`} className="text-primary-600 hover:underline text-xs">
-                              {d.job_title}
-                            </Link>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">{fmt(d.amount)}</td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{fmt(d.total_amount || d.total_with_kdv)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {d.due_date ? (
-                            <span className={d.status === 'unpaid' && new Date(d.due_date) < new Date() ? 'text-red-600 font-medium' : ''}>
-                              {formatDate(d.due_date)}
-                            </span>
-                          ) : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {d.status === 'paid' ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                              Odendi
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              Bekliyor
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
-                            {d.status === 'unpaid' && (
-                              <button
-                                onClick={() => handlePay(d.id)}
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
-                                title="Odendi olarak isaretle"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleDelete(d.id)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                              title="Sil"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div>
+              <label className="form-label">KDV Orani (%)</label>
+              <input className="form-input" type="number" step="1" min="0" max="100" value={editForm.kdv_rate} onChange={e => setEdit('kdv_rate', e.target.value)} />
+            </div>
+          </div>
+
+          {Number(editForm.amount) > 0 && (
+            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+              <div className="flex justify-between text-gray-500">
+                <span>Tutar:</span><span>{fmt(editForm.amount)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>KDV (%{editForm.kdv_rate}):</span><span>{fmt(editKdvAmount)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-accent-900 border-t border-gray-200 pt-1">
+                <span>KDV Dahil:</span><span>{fmt(editTotalWithKdv)}</span>
               </div>
             </div>
           )}
-        </>
-      )}
 
-      {/* Alinan Malzemeler Tab */}
-      {activeTab === 'purchases' && (
-        <>
-          {purchases.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-lg">Bu tedarikciden henuz alisveris yapilmamis</p>
-              <p className="text-gray-400 text-sm mt-1">Is masraflarinda bu tedarikci secildiginde burada gorunecektir</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Tarih *</label>
+              <input className="form-input" type="date" required value={editForm.expense_date} onChange={e => setEdit('expense_date', e.target.value)} />
             </div>
-          ) : (
-            <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Tarih</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Aciklama</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Kategori</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Hangi Is Icin</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">Tutar</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">KDV Dahil</th>
-                      <th className="text-center px-4 py-3 font-medium text-gray-600">Odeme</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {purchases.map(p => (
-                      <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">{formatDate(p.expense_date)}</td>
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-accent-900">{p.description}</span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                            {p.category}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {p.job_title ? (
-                            <Link to={`/jobs/${p.job_id}`} className="text-primary-600 hover:underline text-xs">
-                              {p.job_title}
-                            </Link>
-                          ) : (
-                            <span className="text-gray-400 text-xs">Genel</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">{fmt(p.amount)}</td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{fmt(p.total_with_kdv)}</td>
-                        <td className="px-4 py-3 text-center">
-                          {p.is_paid ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                              Odendi
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              Odenmedi
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-gray-50 border-t border-gray-200">
-                      <td colSpan={5} className="px-4 py-3 font-bold text-accent-900">Toplam</td>
-                      <td className="px-4 py-3 text-right font-bold text-accent-900">{fmt(purchaseTotal)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+            <div>
+              <label className="form-label">Kategori</label>
+              <select className="form-input" value={editForm.category} onChange={e => setEdit('category', e.target.value)}>
+                {categories.length > 0
+                  ? categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+                  : <option value="Genel">Genel</option>
+                }
+              </select>
             </div>
-          )}
-        </>
-      )}
-
-      {/* Hesap Hareketleri Tab */}
-      {activeTab === 'transactions' && (
-        <>
-          {transactions.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-lg">Henuz hesap hareketi yok</p>
-              <p className="text-gray-400 text-sm mt-1">Borclar odendiginde veya masraf girildiginde burada gorunecektir</p>
-            </div>
-          ) : (
-            <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Tarih</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Islem Tipi</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Aciklama</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Is</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Odeme Yontemi</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">Tutar</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {transactions.map((t, i) => (
-                      <tr key={`${t.type}-${t.id}-${i}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">{formatDate(t.date)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {t.type === 'borc_odeme' ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                              Borc Odeme
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              Masraf/Alisveris
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-accent-900">{t.description}</span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {t.job_title ? (
-                            <span className="text-primary-600 text-xs">{t.job_title}</span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                            {t.payment_method || 'Nakit'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-red-600">
-                          -{fmt(t.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-gray-50 border-t border-gray-200">
-                      <td colSpan={5} className="px-4 py-3 font-bold text-accent-900">Toplam Islem</td>
-                      <td className="px-4 py-3 text-right font-bold text-red-600">
-                        -{fmt(transactions.reduce((s, t) => s + Number(t.amount || 0), 0))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Add Debt Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Borc Ekle" size="md">
-        <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label className="form-label">Aciklama *</label>
-            <input className="form-input" required value={form.description} onChange={e => set('description', e.target.value)} />
           </div>
 
           <div>
             <label className="form-label">Hangi Is Icin</label>
-            <select className="form-input" value={form.job_id} onChange={e => set('job_id', e.target.value)}>
-              <option value="">-- Genel / Is secilmedi --</option>
+            <select className="form-input" value={editForm.job_id} onChange={e => setEdit('job_id', e.target.value)}>
+              <option value="">-- Genel --</option>
               {jobs.map(j => (
                 <option key={j.id} value={j.id}>{j.title}</option>
               ))}
             </select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">Tutar (₺) *</label>
-              <input
-                className="form-input"
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={form.amount}
-                onChange={e => set('amount', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="form-label">KDV Orani (%)</label>
-              <input
-                className="form-input"
-                type="number"
-                step="1"
-                min="0"
-                max="100"
-                value={form.kdv_rate}
-                onChange={e => set('kdv_rate', e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* KDV Preview */}
-          {Number(form.amount) > 0 && (
-            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
-              <div className="flex justify-between text-gray-500">
-                <span>Tutar:</span>
-                <span>{fmt(form.amount)}</span>
-              </div>
-              <div className="flex justify-between text-gray-500">
-                <span>KDV (%{form.kdv_rate}):</span>
-                <span>{fmt(kdvAmount)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-accent-900 border-t border-gray-200 pt-1">
-                <span>KDV Dahil Toplam:</span>
-                <span>{fmt(totalWithKdv)}</span>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">Borc Tarihi *</label>
-              <input
-                className="form-input"
-                type="date"
-                required
-                value={form.debt_date}
-                onChange={e => set('debt_date', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="form-label">Vade Tarihi</label>
-              <input
-                className="form-input"
-                type="date"
-                value={form.due_date}
-                onChange={e => set('due_date', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="form-label">Not</label>
-            <textarea className="form-input" rows={2} value={form.note} onChange={e => set('note', e.target.value)} />
-          </div>
-
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary">
-              Iptal
-            </button>
-            <button type="submit" disabled={saving} className="btn-primary">
-              {saving ? 'Kaydediliyor...' : 'Kaydet'}
+            <button type="button" onClick={() => setEditModal(null)} className="btn-secondary">Iptal</button>
+            <button type="submit" disabled={editSaving} className="btn-primary">
+              {editSaving ? 'Kaydediliyor...' : 'Guncelle'}
             </button>
           </div>
         </form>
