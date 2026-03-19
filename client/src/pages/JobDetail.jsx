@@ -16,7 +16,7 @@ const methodLabels = {
 };
 
 const emptyPayment = { amount: '', payment_date: '', method: 'nakit', note: '' };
-const emptyExpense = { category: '', supplier_id: '', description: '', amount: '', kdv_rate: 20, expense_date: '', is_paid: false, payment_method: 'nakit' };
+const emptyExpense = { category: '', supplier_id: '', description: '', faturali_tutar: '', faturasiz_tutar: '', kdv_rate: 20, expense_date: '', is_paid: false, payment_method: 'nakit' };
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -35,6 +35,7 @@ export default function JobDetail() {
   const [expenseModal, setExpenseModal] = useState(false);
   const [expenseForm, setExpenseForm] = useState(emptyExpense);
   const [savingExpense, setSavingExpense] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null); // expense id or null
 
   const fetchJob = useCallback(async () => {
     try {
@@ -107,7 +108,24 @@ export default function JobDetail() {
 
   // Expense handlers
   const openExpenseModal = () => {
+    setEditingExpense(null);
     setExpenseForm(emptyExpense);
+    setExpenseModal(true);
+  };
+
+  const openEditExpense = (exp) => {
+    setEditingExpense(exp.id);
+    setExpenseForm({
+      category: exp.category || '',
+      supplier_id: exp.supplier_id || '',
+      description: exp.description || '',
+      faturali_tutar: exp.faturali_tutar || '',
+      faturasiz_tutar: exp.faturasiz_tutar || exp.amount || '',
+      kdv_rate: exp.kdv_rate || 20,
+      expense_date: exp.expense_date || '',
+      is_paid: exp.is_paid ? true : false,
+      payment_method: exp.payment_method || 'nakit',
+    });
     setExpenseModal(true);
   };
 
@@ -115,18 +133,25 @@ export default function JobDetail() {
     e.preventDefault();
     setSavingExpense(true);
     try {
-      await api.post('/expenses', {
+      const payload = {
         job_id: Number(id),
         supplier_id: expenseForm.supplier_id || null,
         category: expenseForm.category,
         description: expenseForm.description,
-        amount: Number(expenseForm.amount),
+        faturali_tutar: Number(expenseForm.faturali_tutar) || 0,
+        faturasiz_tutar: Number(expenseForm.faturasiz_tutar) || 0,
         kdv_rate: Number(expenseForm.kdv_rate) || 20,
         expense_date: expenseForm.expense_date,
         is_paid: expenseForm.is_paid,
         payment_method: expenseForm.payment_method,
-      });
+      };
+      if (editingExpense) {
+        await api.put(`/expenses/${editingExpense}`, payload);
+      } else {
+        await api.post('/expenses', payload);
+      }
       setExpenseModal(false);
+      setEditingExpense(null);
       fetchJob();
     } catch (err) {
       alert(err.response?.data?.error || 'Hata olustu');
@@ -319,13 +344,22 @@ export default function JobDetail() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => handleDeleteExpense(exp.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Sil"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEditExpense(exp)}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Duzenle"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteExpense(exp.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Sil"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -371,7 +405,7 @@ export default function JobDetail() {
       </Modal>
 
       {/* Expense Modal */}
-      <Modal open={expenseModal} onClose={() => setExpenseModal(false)} title="Masraf Ekle" size="lg">
+      <Modal open={expenseModal} onClose={() => { setExpenseModal(false); setEditingExpense(null); }} title={editingExpense ? 'Masraf Duzenle' : 'Masraf Ekle'} size="lg">
         <form onSubmit={handleSaveExpense} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -397,11 +431,17 @@ export default function JobDetail() {
             <label className="form-label">Aciklama</label>
             <input className="form-input" value={expenseForm.description} onChange={e => setE('description', e.target.value)} placeholder="Masraf aciklamasi" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="form-label">Tutar *</label>
-              <input className="form-input" type="number" step="0.01" min="0" required value={expenseForm.amount} onChange={e => setE('amount', e.target.value)} />
+              <label className="form-label">Faturali Tutar</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={expenseForm.faturali_tutar} onChange={e => setE('faturali_tutar', e.target.value)} placeholder="KDV uygulanacak tutar" />
             </div>
+            <div>
+              <label className="form-label">Faturasiz Tutar</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={expenseForm.faturasiz_tutar} onChange={e => setE('faturasiz_tutar', e.target.value)} placeholder="KDV uygulanmayacak tutar" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="form-label">KDV Orani (%)</label>
               <input className="form-input" type="number" step="1" min="0" max="100" value={expenseForm.kdv_rate} onChange={e => setE('kdv_rate', e.target.value)} />
@@ -411,6 +451,23 @@ export default function JobDetail() {
               <input className="form-input" type="date" required value={expenseForm.expense_date} onChange={e => setE('expense_date', e.target.value)} />
             </div>
           </div>
+          {/* KDV Preview */}
+          {(() => {
+            const ft = Number(expenseForm.faturali_tutar) || 0;
+            const fst = Number(expenseForm.faturasiz_tutar) || 0;
+            const rate = Number(expenseForm.kdv_rate) || 0;
+            if (ft + fst <= 0) return null;
+            const kdv = Math.round(ft * rate / 100 * 100) / 100;
+            const total = Math.round((ft + kdv + fst) * 100) / 100;
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm space-y-1">
+                <div className="flex justify-between"><span className="text-gray-600">Faturali:</span><span className="font-medium">{fmt(ft)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">KDV ({rate}%):</span><span className="font-medium text-blue-700">+{fmt(kdv)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Faturasiz:</span><span className="font-medium">{fmt(fst)}</span></div>
+                <div className="flex justify-between border-t border-blue-200 pt-1 mt-1"><span className="font-semibold text-gray-800">Toplam (KDV Dahil):</span><span className="font-bold text-blue-800">{fmt(total)}</span></div>
+              </div>
+            );
+          })()}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="form-label">Odeme Yontemi</label>
@@ -433,9 +490,9 @@ export default function JobDetail() {
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            <button type="button" onClick={() => setExpenseModal(false)} className="btn-secondary">Iptal</button>
+            <button type="button" onClick={() => { setExpenseModal(false); setEditingExpense(null); }} className="btn-secondary">Iptal</button>
             <button type="submit" disabled={savingExpense} className="btn-primary">
-              {savingExpense ? 'Kaydediliyor...' : 'Kaydet'}
+              {savingExpense ? 'Kaydediliyor...' : editingExpense ? 'Guncelle' : 'Kaydet'}
             </button>
           </div>
         </form>
