@@ -16,7 +16,7 @@ export default function SupplierDetail() {
 
   // Edit modal
   const [editModal, setEditModal] = useState(null); // expense object or null
-  const [editForm, setEditForm] = useState({ description: '', amount: '', kdv_rate: 20, expense_date: '', category: 'Genel', job_id: '' });
+  const [editForm, setEditForm] = useState({ description: '', faturali_tutar: '', faturasiz_tutar: '', kdv_rate: 20, expense_date: '', category: 'Genel', job_id: '' });
   const [editSaving, setEditSaving] = useState(false);
 
   const fetchSupplier = useCallback(async () => {
@@ -67,7 +67,8 @@ export default function SupplierDetail() {
     setEditModal(expense);
     setEditForm({
       description: expense.description || '',
-      amount: expense.amount || '',
+      faturali_tutar: expense.faturali_tutar || '',
+      faturasiz_tutar: expense.faturasiz_tutar || expense.amount || '',
       kdv_rate: expense.kdv_rate || 20,
       expense_date: expense.expense_date || '',
       category: expense.category || 'Genel',
@@ -81,7 +82,8 @@ export default function SupplierDetail() {
     try {
       await api.put(`/suppliers/expenses/${editModal.id}`, {
         ...editForm,
-        amount: Number(editForm.amount),
+        faturali_tutar: Number(editForm.faturali_tutar) || 0,
+        faturasiz_tutar: Number(editForm.faturasiz_tutar) || 0,
         kdv_rate: Number(editForm.kdv_rate),
         job_id: editForm.job_id ? Number(editForm.job_id) : null,
       });
@@ -127,8 +129,10 @@ export default function SupplierDetail() {
     return new Date(d).toLocaleDateString('tr-TR');
   };
 
-  const editKdvAmount = (Number(editForm.amount) || 0) * (Number(editForm.kdv_rate) || 0) / 100;
-  const editTotalWithKdv = (Number(editForm.amount) || 0) + editKdvAmount;
+  const editFt = Number(editForm.faturali_tutar) || 0;
+  const editFst = Number(editForm.faturasiz_tutar) || 0;
+  const editKdvAmount = editFt * (Number(editForm.kdv_rate) || 0) / 100;
+  const editTotalWithKdv = editFt + editKdvAmount + editFst;
 
   return (
     <div className="space-y-6">
@@ -325,10 +329,14 @@ export default function SupplierDetail() {
             <input className="form-input" value={editForm.description} onChange={e => setEdit('description', e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="form-label">Tutar (₺) *</label>
-              <input className="form-input" type="number" step="0.01" min="0" required value={editForm.amount} onChange={e => setEdit('amount', e.target.value)} />
+              <label className="form-label">Faturali Tutar (₺)</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={editForm.faturali_tutar} onChange={e => setEdit('faturali_tutar', e.target.value)} placeholder="KDV uygulanacak" />
+            </div>
+            <div>
+              <label className="form-label">Faturasiz Tutar (₺)</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={editForm.faturasiz_tutar} onChange={e => setEdit('faturasiz_tutar', e.target.value)} placeholder="KDV uygulanmaz" />
             </div>
             <div>
               <label className="form-label">KDV Orani (%)</label>
@@ -336,16 +344,25 @@ export default function SupplierDetail() {
             </div>
           </div>
 
-          {Number(editForm.amount) > 0 && (
+          {(editFt > 0 || editFst > 0) && (
             <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
-              <div className="flex justify-between text-gray-500">
-                <span>Tutar:</span><span>{fmt(editForm.amount)}</span>
-              </div>
-              <div className="flex justify-between text-gray-500">
-                <span>KDV (%{editForm.kdv_rate}):</span><span>{fmt(editKdvAmount)}</span>
-              </div>
+              {editFt > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Faturali:</span><span>{fmt(editFt)}</span>
+                </div>
+              )}
+              {editFt > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>KDV (%{editForm.kdv_rate}):</span><span>{fmt(editKdvAmount)}</span>
+                </div>
+              )}
+              {editFst > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Faturasiz:</span><span>{fmt(editFst)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-accent-900 border-t border-gray-200 pt-1">
-                <span>KDV Dahil:</span><span>{fmt(editTotalWithKdv)}</span>
+                <span>Toplam (KDV Dahil):</span><span>{fmt(editTotalWithKdv)}</span>
               </div>
             </div>
           )}

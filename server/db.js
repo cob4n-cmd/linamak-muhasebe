@@ -227,6 +227,8 @@ async function initDB() {
     "ALTER TABLE jobs ADD COLUMN faturali_tutar REAL NOT NULL DEFAULT 0",
     "ALTER TABLE jobs ADD COLUMN faturasiz_tutar REAL NOT NULL DEFAULT 0",
     "ALTER TABLE supplier_debts ADD COLUMN job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL",
+    "ALTER TABLE expenses ADD COLUMN faturali_tutar REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE expenses ADD COLUMN faturasiz_tutar REAL NOT NULL DEFAULT 0",
   ];
   for (const sql of migrations) {
     try { await client.execute(sql); } catch (e) { /* column already exists */ }
@@ -237,6 +239,8 @@ async function initDB() {
   await db.run("UPDATE jobs SET faturali_tutar = 0, faturasiz_tutar = contract_value WHERE faturali_tutar = 0 AND faturasiz_tutar = 0 AND invoice_status = 'faturasiz'");
   // Karma olmayan, henuz set edilmemis olanlari faturasiz olarak kabul et
   await db.run("UPDATE jobs SET faturasiz_tutar = contract_value WHERE faturali_tutar = 0 AND faturasiz_tutar = 0 AND contract_value > 0");
+  // Mevcut masraflar: faturali/faturasiz henuz set edilmemis olanlari amount'a gore ata
+  await db.run("UPDATE expenses SET faturasiz_tutar = amount WHERE faturali_tutar = 0 AND faturasiz_tutar = 0 AND amount > 0");
 
   // Seed: Admin kullanici
   const adminExists = await db.get('SELECT id FROM users WHERE username = ?', 'admin');

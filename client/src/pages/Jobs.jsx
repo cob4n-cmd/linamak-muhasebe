@@ -36,7 +36,7 @@ export default function Jobs() {
   const [suppliers, setSuppliers] = useState([]);
   const [expCategories, setExpCategories] = useState([]);
   const [expModal, setExpModal] = useState(null); // job id or null
-  const [expForm, setExpForm] = useState({ description: '', amount: '', kdv_rate: 20, category: 'Genel', supplier_id: '', supplier_name: '', expense_date: '', note: '' });
+  const [expForm, setExpForm] = useState({ description: '', faturali_tutar: '', faturasiz_tutar: '', kdv_rate: 20, category: 'Genel', supplier_id: '', supplier_name: '', expense_date: '', note: '' });
   const [supplierMode, setSupplierMode] = useState('select'); // 'select' | 'type'
   const [expSaving, setExpSaving] = useState(false);
 
@@ -151,7 +151,7 @@ export default function Jobs() {
 
   const openExpenseModal = (jobId) => {
     setExpModal(jobId);
-    setExpForm({ description: '', amount: '', kdv_rate: 20, category: 'Genel', supplier_id: '', supplier_name: '', expense_date: new Date().toISOString().slice(0, 10), note: '' });
+    setExpForm({ description: '', faturali_tutar: '', faturasiz_tutar: '', kdv_rate: 20, category: 'Genel', supplier_id: '', supplier_name: '', expense_date: new Date().toISOString().slice(0, 10), note: '' });
     setSupplierMode('select');
   };
 
@@ -181,7 +181,8 @@ export default function Jobs() {
         supplier_id: supplierId,
         category: expForm.category,
         description: expForm.description,
-        amount: parseFloat(expForm.amount),
+        faturali_tutar: parseFloat(expForm.faturali_tutar) || 0,
+        faturasiz_tutar: parseFloat(expForm.faturasiz_tutar) || 0,
         kdv_rate: parseFloat(expForm.kdv_rate) || 20,
         expense_date: expForm.expense_date,
         is_paid: false,
@@ -555,21 +556,52 @@ export default function Jobs() {
             <input className="form-input" value={expForm.description} onChange={e => setExp('description', e.target.value)} placeholder="Masraf aciklamasi" required />
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-3 gap-4">
             <div>
-              <label className="form-label">Tutar (₺) *</label>
-              <input className="form-input" type="number" step="0.01" min="0" value={expForm.amount} onChange={e => setExp('amount', e.target.value)} required />
+              <label className="form-label">Faturali Tutar (₺)</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={expForm.faturali_tutar} onChange={e => setExp('faturali_tutar', e.target.value)} placeholder="KDV uygulanacak" />
             </div>
             <div>
-              <label className="form-label">Tarih *</label>
-              <input className="form-input" type="date" value={expForm.expense_date} onChange={e => setExp('expense_date', e.target.value)} required />
+              <label className="form-label">Faturasiz Tutar (₺)</label>
+              <input className="form-input" type="number" step="0.01" min="0" value={expForm.faturasiz_tutar} onChange={e => setExp('faturasiz_tutar', e.target.value)} placeholder="KDV uygulanmaz" />
             </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="form-label">KDV Orani (%)</label>
               <input className="form-input" type="number" step="1" min="0" max="100" value={expForm.kdv_rate} onChange={e => setExp('kdv_rate', e.target.value)} />
+            </div>
+          </div>
+
+          {/* KDV Onizleme */}
+          {(Number(expForm.faturali_tutar) > 0 || Number(expForm.faturasiz_tutar) > 0) && (
+            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+              {Number(expForm.faturali_tutar) > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Faturali:</span><span>{fmt(expForm.faturali_tutar)}</span>
+                </div>
+              )}
+              {Number(expForm.faturali_tutar) > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>KDV (%{expForm.kdv_rate}):</span><span>{fmt(Number(expForm.faturali_tutar) * Number(expForm.kdv_rate) / 100)}</span>
+                </div>
+              )}
+              {Number(expForm.faturasiz_tutar) > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Faturasiz:</span><span>{fmt(expForm.faturasiz_tutar)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-accent-900 border-t border-gray-200 pt-1">
+                <span>Toplam (KDV Dahil):</span>
+                <span>{fmt(
+                  Number(expForm.faturali_tutar || 0) * (1 + Number(expForm.kdv_rate || 0) / 100) + Number(expForm.faturasiz_tutar || 0)
+                )}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Tarih *</label>
+              <input className="form-input" type="date" value={expForm.expense_date} onChange={e => setExp('expense_date', e.target.value)} required />
             </div>
             <div>
               <label className="form-label">Kategori</label>

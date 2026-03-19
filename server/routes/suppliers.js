@@ -78,12 +78,15 @@ router.put('/expenses/:expenseId/toggle-paid', async (req, res) => {
 
 // Masraf guncelle
 router.put('/expenses/:expenseId', async (req, res) => {
-  const { description, amount, kdv_rate, expense_date, category, job_id, note } = req.body;
-  const rate = kdv_rate || 20;
-  const kdv_amount = Math.round(amount * rate / 100 * 100) / 100;
-  const total_with_kdv = Math.round((amount + kdv_amount) * 100) / 100;
-  await db.run(`UPDATE expenses SET description=?, amount=?, kdv_rate=?, kdv_amount=?, total_with_kdv=?, expense_date=?, category=?, job_id=? WHERE id=?`,
-    description || '', amount, rate, kdv_amount, total_with_kdv, expense_date, category || 'Genel', job_id || null, req.params.expenseId);
+  const { description, faturali_tutar, faturasiz_tutar, kdv_rate, expense_date, category, job_id } = req.body;
+  const ft = Number(faturali_tutar) || 0;
+  const fst = Number(faturasiz_tutar) || 0;
+  const rate = Number(kdv_rate) || 20;
+  const amount = ft + fst;
+  const kdv_amount = Math.round(ft * rate / 100 * 100) / 100;
+  const total_with_kdv = Math.round((ft + kdv_amount + fst) * 100) / 100;
+  await db.run(`UPDATE expenses SET description=?, amount=?, kdv_rate=?, kdv_amount=?, total_with_kdv=?, expense_date=?, category=?, job_id=?, faturali_tutar=?, faturasiz_tutar=? WHERE id=?`,
+    description || '', amount, rate, kdv_amount, total_with_kdv, expense_date, category || 'Genel', job_id || null, ft, fst, req.params.expenseId);
   res.json({ success: true });
 });
 

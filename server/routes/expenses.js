@@ -5,6 +5,17 @@ const { auth } = require('../middleware/auth');
 
 router.use(auth);
 
+// KDV hesaplama helper: KDV sadece faturali kisma uygulanir
+function calcExpense(faturali_tutar, faturasiz_tutar, kdv_rate) {
+  const ft = Number(faturali_tutar) || 0;
+  const fst = Number(faturasiz_tutar) || 0;
+  const rate = Number(kdv_rate) || 20;
+  const amount = ft + fst; // toplam net tutar
+  const kdv_amount = Math.round(ft * rate / 100 * 100) / 100; // KDV sadece faturaliya
+  const total_with_kdv = Math.round((ft + kdv_amount + fst) * 100) / 100;
+  return { amount, kdv_amount, total_with_kdv, rate, ft, fst };
+}
+
 // Categories
 router.get('/categories', async (req, res) => {
   res.json(await db.all('SELECT * FROM expense_categories ORDER BY name'));
@@ -26,50 +37,46 @@ router.get('/', async (req, res) => {
 
 // Create expense
 router.post('/', async (req, res) => {
-  const { job_id, supplier_id, category, description, amount, kdv_rate, expense_date, is_paid, payment_method } = req.body;
-  if (!category || !amount || !expense_date) return res.status(400).json({ error: 'Kategori, tutar ve tarih gerekli' });
-  const rate = kdv_rate || 20;
-  const kdv_amount = Math.round(amount * rate / 100 * 100) / 100;
-  const total_with_kdv = Math.round((amount + kdv_amount) * 100) / 100;
-  const r = await db.run(`INSERT INTO expenses (job_id, supplier_id, category, description, amount, kdv_rate, kdv_amount, total_with_kdv, expense_date, is_paid, payment_method)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    job_id || null, supplier_id || null, category, description || '', amount, rate, kdv_amount, total_with_kdv,
-    expense_date, is_paid ? 1 : 0, payment_method || 'nakit'
-  );
-  const expenseId = Number(r.lastInsertRowid);
+  const { job_id, supplier_id, category, description, faturali_tutar, faturasiz_tutar, amount: legacyAmount, kdv_rate, expense_date, is_paid, payment_method } = req.body;
+  if (!category || !expense_date) return res.status(400).json({ error: 'Kategori ve tarih gerekli' });
 
-  // Tedarikci seciliyse otomatik borc kaydi olustur
-  if (supplier_id) {
-    await db.run(`INSERT INTO supplier_debts (supplier_id, description, amount, kdv_rate, total_with_kdv, debt_date, is_paid, paid_date, payment_method, note, job_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      supplier_id, description || category, amount, rate, total_with_kdv, expense_date,
-      is_paid ? 1 : 0, is_paid ? expense_date : null, is_paid ? (payment_method || 'nakit') : '',
-      'Masraf #' + expenseId, job_id || null
-    );
+  // Eski format uyumlulugu: sadece amount gonderilmisse faturasiz olarak kabul et
+  let ft = Number(faturali_tutar) || 0;
+  let fst = Number(faturasiz_tutar) || 0;
+  if (ft === 0 && fst === 0 && legacyAmount) {
+    fst = Number(legacyAmount) || 0;
   }
+  if (ft + fst <= 0) return res.status(400).json({ error: 'Tutar gerekli' });
 
-  res.json({ id: expenseId, success: true });
+  const { amount, kdv_amount, total_with_kdv, rate } = calcExpense(ft, fst, kdv_rate);
+
+  const r = await db.run(`INSERT INTO expenses (job_id, supplier_id, category, description, amount, kdv_rate, kdv_amount, total_with_kdv, expense_date, is_paid, payment_method, faturali_tutar, faturasiz_tutar)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    job_id || null, supplier_id || null, category, description || '', amount, rate, kdv_amount, total_with_kdv,
+    expense_date, is_paid ? 1 : 0, payment_method || 'nakit', ft, fst
+  );
+  res.json({ id: Number(r.lastInsertRowid), success: true });
 });
 
 // Update expense
 router.put('/:id', async (req, res) => {
-  const { job_id, supplier_id, category, description, amount, kdv_rate, expense_date, is_paid, payment_method } = req.body;
-  const rate = kdv_rate || 20;
-  const kdv_amount = Math.round(amount * rate / 100 * 100) / 100;
-  const total_with_kdv = Math.round((amount + kdv_amount) * 100) / 100;
-  await db.run(`UPDATE expenses SET job_id=?, supplier_id=?, category=?, description=?, amount=?, kdv_rate=?, kdv_amount=?, total_with_kdv=?, expense_date=?, is_paid=?, payment_method=? WHERE id=?`,
-    job_id || null, supplier_id || null, category, description || '', amount, rate, kdv_amount, total_with_kdv, expense_date, is_paid ? 1 : 0, payment_method || 'nakit', req.params.id);
+  const { job_id, supplier_id, category, description, faturali_tutar, faturasiz_tutar, amount: legacyAmount, kdv_rate, expense_date, is_paid, payment_method } = req.body;
+
+  let ft = Number(faturali_tutar) || 0;
+  let fst = Number(faturasiz_tutar) || 0;
+  if (ft === 0 && fst === 0 && legacyAmount) {
+    fst = Number(legacyAmount) || 0;
+  }
+
+  const { amount, kdv_amount, total_with_kdv, rate } = calcExpense(ft, fst, kdv_rate);
+
+  await db.run(`UPDATE expenses SET job_id=?, supplier_id=?, category=?, description=?, amount=?, kdv_rate=?, kdv_amount=?, total_with_kdv=?, expense_date=?, is_paid=?, payment_method=?, faturali_tutar=?, faturasiz_tutar=? WHERE id=?`,
+    job_id || null, supplier_id || null, category, description || '', amount, rate, kdv_amount, total_with_kdv, expense_date, is_paid ? 1 : 0, payment_method || 'nakit', ft, fst, req.params.id);
   res.json({ success: true });
 });
 
 // Delete expense
 router.delete('/:id', async (req, res) => {
-  // Ilgili tedarikci borcunu da sil
-  const expense = await db.get('SELECT * FROM expenses WHERE id = ?', req.params.id);
-  if (expense && expense.supplier_id) {
-    await db.run(`DELETE FROM supplier_debts WHERE supplier_id = ? AND note = ?`,
-      expense.supplier_id, 'Masraf #' + req.params.id);
-  }
   await db.run('DELETE FROM expenses WHERE id = ?', req.params.id);
   res.json({ success: true });
 });
