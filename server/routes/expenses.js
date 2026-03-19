@@ -36,7 +36,19 @@ router.post('/', async (req, res) => {
     job_id || null, supplier_id || null, category, description || '', amount, rate, kdv_amount, total_with_kdv,
     expense_date, is_paid ? 1 : 0, payment_method || 'nakit'
   );
-  res.json({ id: Number(r.lastInsertRowid), success: true });
+  const expenseId = Number(r.lastInsertRowid);
+
+  // Tedarikci seciliyse otomatik borc kaydi olustur
+  if (supplier_id) {
+    await db.run(`INSERT INTO supplier_debts (supplier_id, description, amount, kdv_rate, total_with_kdv, debt_date, is_paid, paid_date, payment_method, note, job_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      supplier_id, description || category, amount, rate, total_with_kdv, expense_date,
+      is_paid ? 1 : 0, is_paid ? expense_date : null, is_paid ? (payment_method || 'nakit') : '',
+      'Masraf #' + expenseId, job_id || null
+    );
+  }
+
+  res.json({ id: expenseId, success: true });
 });
 
 // Update expense
@@ -52,6 +64,12 @@ router.put('/:id', async (req, res) => {
 
 // Delete expense
 router.delete('/:id', async (req, res) => {
+  // Ilgili tedarikci borcunu da sil
+  const expense = await db.get('SELECT * FROM expenses WHERE id = ?', req.params.id);
+  if (expense && expense.supplier_id) {
+    await db.run(`DELETE FROM supplier_debts WHERE supplier_id = ? AND note = ?`,
+      expense.supplier_id, 'Masraf #' + req.params.id);
+  }
   await db.run('DELETE FROM expenses WHERE id = ?', req.params.id);
   res.json({ success: true });
 });

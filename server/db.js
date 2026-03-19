@@ -264,6 +264,23 @@ async function initDB() {
     await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", k, v);
   }
 
+  // Migration: Mevcut masraflari tedarikci borclarina senkronize et
+  const orphanExpenses = await db.all(`SELECT e.id, e.supplier_id, e.description, e.category, e.amount, e.kdv_rate, e.total_with_kdv, e.expense_date, e.is_paid, e.payment_method, e.job_id
+    FROM expenses e
+    WHERE e.supplier_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM supplier_debts sd WHERE sd.note = 'Masraf #' || e.id)`);
+  for (const e of orphanExpenses) {
+    await db.run(`INSERT INTO supplier_debts (supplier_id, description, amount, kdv_rate, total_with_kdv, debt_date, is_paid, paid_date, payment_method, note, job_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      e.supplier_id, e.description || e.category, e.amount, e.kdv_rate, e.total_with_kdv, e.expense_date,
+      e.is_paid ? 1 : 0, e.is_paid ? e.expense_date : null, e.is_paid ? (e.payment_method || 'nakit') : '',
+      'Masraf #' + e.id, e.job_id || null
+    );
+  }
+  if (orphanExpenses.length > 0) {
+    console.log(`${orphanExpenses.length} mevcut masraf tedarikci borcuna senkronize edildi.`);
+  }
+
   console.log('Veritabani hazir.');
 }
 
