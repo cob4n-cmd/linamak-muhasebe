@@ -19,7 +19,7 @@ export default function SupplierDetail() {
   const [form, setForm] = useState(emptyDebt);
   const [saving, setSaving] = useState(false);
   const [jobs, setJobs] = useState([]);
-  const [activeTab, setActiveTab] = useState('debts'); // debts | transactions
+  const [activeTab, setActiveTab] = useState('debts'); // debts | purchases | transactions
 
   const fetchSupplier = useCallback(async () => {
     try {
@@ -107,6 +107,7 @@ export default function SupplierDetail() {
   }
 
   const debts = supplier.debts || [];
+  const purchases = supplier.purchases || [];
   const transactions = supplier.transactions || [];
   const filteredDebts = debts.filter(d => {
     if (filter === 'unpaid') return d.status === 'unpaid';
@@ -116,6 +117,7 @@ export default function SupplierDetail() {
 
   const unpaidTotal = debts.filter(d => d.status === 'unpaid').reduce((s, d) => s + Number(d.total_amount || d.total_with_kdv || d.amount || 0), 0);
   const paidTotal = debts.filter(d => d.status === 'paid').reduce((s, d) => s + Number(d.total_amount || d.total_with_kdv || d.amount || 0), 0);
+  const purchaseTotal = purchases.reduce((s, p) => s + Number(p.total_with_kdv || p.amount || 0), 0);
   const grandTotal = unpaidTotal + paidTotal;
 
   const formatDate = (d) => {
@@ -175,13 +177,14 @@ export default function SupplierDetail() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard title="Odenmemis Borc" value={fmt(unpaidTotal)} color="red" icon="⏳" />
         <StatCard title="Odenen Tutar" value={fmt(paidTotal)} color="green" icon="✓" />
+        <StatCard title="Toplam Alisveris" value={fmt(purchaseTotal)} color="blue" icon="🛒" />
         <StatCard title="Toplam Borc" value={fmt(grandTotal)} color="gray" icon="📊" />
       </div>
 
-      {/* Tabs: Borclar / Hesap Hareketleri */}
+      {/* Tabs */}
       <div className="flex gap-2 border-b border-gray-200">
         <button
           onClick={() => setActiveTab('debts')}
@@ -192,6 +195,16 @@ export default function SupplierDetail() {
           }`}
         >
           Borclar ({debts.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('purchases')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'purchases'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Alinan Malzemeler ({purchases.length})
         </button>
         <button
           onClick={() => setActiveTab('transactions')}
@@ -208,7 +221,6 @@ export default function SupplierDetail() {
       {/* Borclar Tab */}
       {activeTab === 'debts' && (
         <>
-          {/* Filter Buttons */}
           <div className="flex gap-2">
             {[
               { key: 'all', label: 'Tumu', count: debts.length },
@@ -229,7 +241,6 @@ export default function SupplierDetail() {
             ))}
           </div>
 
-          {/* Debts Table */}
           {filteredDebts.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-400 text-lg">Borc kaydi bulunamadi</p>
@@ -321,13 +332,13 @@ export default function SupplierDetail() {
         </>
       )}
 
-      {/* Hesap Hareketleri Tab */}
-      {activeTab === 'transactions' && (
+      {/* Alinan Malzemeler Tab */}
+      {activeTab === 'purchases' && (
         <>
-          {transactions.length === 0 ? (
+          {purchases.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-400 text-lg">Henuz hesap hareketi yok</p>
-              <p className="text-gray-400 text-sm mt-1">Borclar odendiginde burada gorunecektir</p>
+              <p className="text-gray-400 text-lg">Bu tedarikciden henuz alisveris yapilmamis</p>
+              <p className="text-gray-400 text-sm mt-1">Is masraflarinda bu tedarikci secildiginde burada gorunecektir</p>
             </div>
           ) : (
             <div className="card overflow-hidden">
@@ -335,7 +346,82 @@ export default function SupplierDetail() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Odeme Tarihi</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Tarih</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Aciklama</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Kategori</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Hangi Is Icin</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-600">Tutar</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-600">KDV Dahil</th>
+                      <th className="text-center px-4 py-3 font-medium text-gray-600">Odeme</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {purchases.map(p => (
+                      <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap">{formatDate(p.expense_date)}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-accent-900">{p.description}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            {p.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {p.job_title ? (
+                            <Link to={`/jobs/${p.job_id}`} className="text-primary-600 hover:underline text-xs">
+                              {p.job_title}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-400 text-xs">Genel</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">{fmt(p.amount)}</td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{fmt(p.total_with_kdv)}</td>
+                        <td className="px-4 py-3 text-center">
+                          {p.is_paid ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                              Odendi
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              Odenmedi
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-50 border-t border-gray-200">
+                      <td colSpan={5} className="px-4 py-3 font-bold text-accent-900">Toplam</td>
+                      <td className="px-4 py-3 text-right font-bold text-accent-900">{fmt(purchaseTotal)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Hesap Hareketleri Tab */}
+      {activeTab === 'transactions' && (
+        <>
+          {transactions.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-400 text-lg">Henuz hesap hareketi yok</p>
+              <p className="text-gray-400 text-sm mt-1">Borclar odendiginde veya masraf girildiginde burada gorunecektir</p>
+            </div>
+          ) : (
+            <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Tarih</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Islem Tipi</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Aciklama</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Is</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Odeme Yontemi</th>
@@ -343,9 +429,20 @@ export default function SupplierDetail() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {transactions.map(t => (
-                      <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                    {transactions.map((t, i) => (
+                      <tr key={`${t.type}-${t.id}-${i}`} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 whitespace-nowrap">{formatDate(t.date)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {t.type === 'borc_odeme' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                              Borc Odeme
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              Masraf/Alisveris
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span className="font-medium text-accent-900">{t.description}</span>
                         </td>
@@ -357,7 +454,7 @@ export default function SupplierDetail() {
                           )}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                             {t.payment_method || 'Nakit'}
                           </span>
                         </td>
@@ -369,7 +466,7 @@ export default function SupplierDetail() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-50 border-t border-gray-200">
-                      <td colSpan={4} className="px-4 py-3 font-bold text-accent-900">Toplam Odenen</td>
+                      <td colSpan={5} className="px-4 py-3 font-bold text-accent-900">Toplam Islem</td>
                       <td className="px-4 py-3 text-right font-bold text-red-600">
                         -{fmt(transactions.reduce((s, t) => s + Number(t.amount || 0), 0))}
                       </td>

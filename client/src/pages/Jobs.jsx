@@ -243,6 +243,7 @@ export default function Jobs() {
   const totalContract = jobs.reduce((s, j) => s + Number(j.contract_value_with_kdv || 0), 0);
   const totalPaid = jobs.reduce((s, j) => s + Number(j.total_paid || 0), 0);
   const totalExpenseAll = jobs.reduce((s, j) => s + Number(j.total_expense || 0), 0);
+  const totalNetProfit = totalPaid - totalExpenseAll;
 
   if (loading) {
     return (
@@ -267,11 +268,12 @@ export default function Jobs() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <StatCard title="Is Sayisi" value={jobs.length} color="blue" icon="📋" />
         <StatCard title="Toplam Sozlesme" value={fmt(totalContract)} color="primary" icon="📄" />
         <StatCard title="Toplam Tahsilat" value={fmt(totalPaid)} color="green" icon="💰" />
         <StatCard title="Toplam Gider" value={fmt(totalExpenseAll)} color="red" icon="📉" />
+        <StatCard title="Net Kar" value={fmt(totalNetProfit)} color={totalNetProfit >= 0 ? 'green' : 'red'} icon="📊" />
       </div>
 
       {/* Filters */}
@@ -309,7 +311,8 @@ export default function Jobs() {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden sm:table-cell">Sozlesme</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden sm:table-cell">Tahsilat</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Gider</th>
-                <th className="text-center px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Fatura</th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Net Kar</th>
+                <th className="text-center px-4 py-3 font-semibold text-gray-600 hidden lg:table-cell">Odeme</th>
                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Durum</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600">Islemler</th>
               </tr>
@@ -317,7 +320,7 @@ export default function Jobs() {
             <tbody className="divide-y divide-gray-100">
               {jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                     Henuz is bulunmuyor
                   </td>
                 </tr>
@@ -334,8 +337,22 @@ export default function Jobs() {
                     <td className="px-4 py-3 text-right font-medium hidden sm:table-cell">{fmt(job.contract_value_with_kdv)}</td>
                     <td className="px-4 py-3 text-right text-emerald-600 font-medium hidden sm:table-cell">{fmt(job.total_paid)}</td>
                     <td className="px-4 py-3 text-right text-red-600 font-medium hidden md:table-cell">{fmt(job.total_expense)}</td>
-                    <td className="px-4 py-3 text-center hidden md:table-cell">
-                      <StatusBadge status={job.invoice_status} type="invoice" />
+                    <td className="px-4 py-3 text-right font-medium hidden md:table-cell">
+                      {(() => {
+                        const net = Number(job.total_paid || 0) - Number(job.total_expense || 0);
+                        return <span className={net >= 0 ? 'text-emerald-600' : 'text-red-600'}>{fmt(net)}</span>;
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 text-center hidden lg:table-cell">
+                      {(() => {
+                        const paid = Number(job.total_paid || 0);
+                        const contract = Number(job.contract_value_with_kdv || 0);
+                        const remaining = contract - paid;
+                        const pct = contract > 0 ? Math.round(paid / contract * 100) : 0;
+                        if (pct >= 100) return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">Tamamen Alindi</span>;
+                        if (pct > 0) return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">%{pct} - Kalan {fmt(remaining)}</span>;
+                        return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Tahsilat Yok</span>;
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <StatusBadge status={job.status} />

@@ -10,7 +10,9 @@ router.get('/', async (req, res) => {
   const { status, search, month, year } = req.query;
   let sql = `SELECT j.*, c.name as customer_name,
     COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.job_id = j.id), 0) as total_paid,
-    COALESCE((SELECT SUM(e.total_with_kdv) FROM expenses e WHERE e.job_id = j.id), 0) as total_expense
+    COALESCE((SELECT SUM(e.total_with_kdv) FROM expenses e WHERE e.job_id = j.id), 0) as total_expense,
+    COALESCE((SELECT SUM(d.total_with_kdv) FROM supplier_debts d WHERE d.job_id = j.id), 0) as total_supplier_debt,
+    COALESCE((SELECT SUM(d.total_with_kdv) FROM supplier_debts d WHERE d.job_id = j.id AND d.is_paid = 0), 0) as unpaid_supplier_debt
     FROM jobs j LEFT JOIN customers c ON j.customer_id = c.id WHERE 1=1`;
   const params = [];
   if (status && status !== 'all') { sql += ` AND j.status = ?`; params.push(status); }
